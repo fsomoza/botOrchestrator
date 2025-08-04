@@ -44,7 +44,6 @@ public class BotOrchestrator {
             deleteServices(workingDir, isRoot);
             return;
         }
-
         // Load API credentials (same as TradingBot)
         Properties props = new Properties();
         try (InputStream input = BotOrchestrator.class.getClassLoader().getResourceAsStream("config.properties")) {
@@ -60,16 +59,28 @@ public class BotOrchestrator {
         }
         logger.info("Loaded API credentials from config.properties");
         SpotClient client = new SpotClientImpl(apiKey, secretKey);
-        // Fetch all 24hr tickers
-        String tickersJson = client.createMarket().ticker24H(new LinkedHashMap<>());
+        // Fetch exchange info to get active USDC pairs
+        String exchangeJson = client.createMarket().exchangeInfo(new LinkedHashMap<>());
         ObjectMapper mapper = new ObjectMapper();
         @SuppressWarnings("unchecked")
+        Map<String, Object> exchangeInfo = mapper.readValue(exchangeJson, Map.class);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> symbols = (List<Map<String, Object>>) exchangeInfo.get("symbols");
+        Set<String> activeUsdcSymbols = new HashSet<>();
+        for (Map<String, Object> sym : symbols) {
+            if (QUOTE_ASSET.equals(sym.get("quoteAsset")) && TRADING_STATUS.equals(sym.get("status"))) {
+                activeUsdcSymbols.add((String) sym.get("symbol"));
+            }
+        }
+        // Fetch all 24hr tickers
+        String tickersJson = client.createMarket().ticker24H(new LinkedHashMap<>());
+        @SuppressWarnings("unchecked")
         List<Map<String, Object>> tickers = mapper.readValue(tickersJson, List.class);
-        // Filter USDC pairs that are trading, sort by quoteVolume descending
+        // Filter USDC pairs that are active, sort by quoteVolume descending
         List<Map<String, Object>> usdcPairs = new ArrayList<>();
         for (Map<String, Object> ticker : tickers) {
             String symbol = (String) ticker.get("symbol");
-            if (symbol != null && symbol.endsWith(QUOTE_ASSET) && TRADING_STATUS.equals(ticker.get("status"))) {
+            if (symbol != null && activeUsdcSymbols.contains(symbol)) {
                 usdcPairs.add(ticker);
             }
         }
@@ -108,8 +119,14 @@ public class BotOrchestrator {
         // Automatic installation if running as root, else manual instructions
         if (isRoot) {
             try {
-                // Copy all service files
-                executeCommand("cp", workingDir + "/tradebot_*.service", "/etc/systemd/system/");
+                // Copy all service files individually
+                File wd = new File(workingDir);
+                File[] serviceFiles = wd.listFiles((d, name) -> name.startsWith("tradebot_") && name.endsWith(".service"));
+                if (serviceFiles != null) {
+                    for (File file : serviceFiles) {
+                        executeCommand("cp", file.getAbsolutePath(), "/etc/systemd/system/");
+                    }
+                }
                 // Reload daemon
                 executeCommand("systemctl", "daemon-reload");
                 // Enable and start each service
@@ -137,51 +154,62 @@ public class BotOrchestrator {
                     "Logs in: " + workingDir + "/output_<symbol>.log");
         }
     }
-
     private static void deleteServices(String workingDir, boolean isRoot) {
-        File dir = new File(workingDir);
-        if (!dir.exists()) {
-            logger.info("Working directory " + workingDir + " does not exist. Nothing to delete.");
-            return;
-        }
-        File[] files = dir.listFiles((d, name) -> name.startsWith("tradebot_") && name.endsWith(".service"));
-        if (files == null || files.length == 0) {
-            logger.info("No service files found to delete.");
-            return;
-        }
-        for (File file : files) {
-            String serviceName = file.getName();
-            if (isRoot) {
-                try {
-                    executeCommand("systemctl", "stop", serviceName);
-                } catch (Exception e) {
-                    logger.warning("Failed to stop " + serviceName + ": " + e.getMessage());
-                }
-                try {
-                    executeCommand("systemctl", "disable", serviceName);
-                } catch (Exception e) {
-                    logger.warning("Failed to disable " + serviceName + ": " + e.getMessage());
-                }
-                try {
-                    executeCommand("rm", "/etc/systemd/system/" + serviceName);
-                } catch (Exception e) {
-                    logger.warning("Failed to remove system service file for " + serviceName + ": " + e.getMessage());
-                }
-            } else {
-                logger.warning("Not running as root. Only local service files will be deleted.");
-            }
-            if (!file.delete()) {
-                logger.warning("Failed to delete " + file.getAbsolutePath());
-            }
-        }
         if (isRoot) {
-            try {
-                executeCommand("systemctl", "daemon-reload");
-            } catch (Exception e) {
-                logger.warning("Failed to reload systemd daemon: " + e.getMessage());
+            File systemDir = new File("/etc/systemd/system/");
+            if (!systemDir.exists()) {
+                logger.info("Systemd system directory does not exist. Nothing to delete.");
+            } else {
+                File[] systemFiles = systemDir.listFiles((d, name) -> name.startsWith("tradebot_") && name.endsWith(".service"));
+                if (systemFiles == null || systemFiles.length == 0) {
+                    logger.info("No service files found in /etc/systemd/system/ to delete.");
+                } else {
+                    for (File file : systemFiles) {
+                        String serviceName = file.getName();
+                        try {
+                            executeCommand("systemctl", "stop", serviceName);
+                        } catch (Exception e) {
+                            logger.warning("Failed to stop " + serviceName + ": " + e.getMessage());
+                        }
+                        try {
+                            executeCommand("systemctl", "disable", serviceName);
+                        } catch (Exception e) {
+                            logger.warning("Failed to disable " + serviceName + ": " + e.getMessage());
+                        }
+                        try {
+                            executeCommand("rm", file.getAbsolutePath());
+                        } catch (Exception e) {
+                            logger.warning("Failed to remove " + serviceName + ": " + e.getMessage());
+                        }
+                    }
+                    try {
+                        executeCommand("systemctl", "daemon-reload");
+                    } catch (Exception e) {
+                        logger.warning("Failed to reload systemd daemon: " + e.getMessage());
+                    }
+                    logger.info("System service cleanup completed.");
+                }
             }
+        } else {
+            logger.warning("Not running as root. Cannot delete system services.");
         }
-        logger.info("Service cleanup completed.");
+        // Always check and delete any local service files if present
+        File localDir = new File(workingDir);
+        if (!localDir.exists()) {
+            logger.info("Working directory " + workingDir + " does not exist. No local files to delete.");
+            return;
+        }
+        File[] localFiles = localDir.listFiles((d, name) -> name.startsWith("tradebot_") && name.endsWith(".service"));
+        if (localFiles == null || localFiles.length == 0) {
+            logger.info("No local service files found to delete.");
+        } else {
+            for (File file : localFiles) {
+                if (!file.delete()) {
+                    logger.warning("Failed to delete local " + file.getAbsolutePath());
+                }
+            }
+            logger.info("Local service files deleted.");
+        }
     }
     private static void generateServiceFile(String symbol, String workingDir, String jarPath, String userName) throws IOException {
         String serviceName = "tradebot_" + symbol.toLowerCase() + ".service";
