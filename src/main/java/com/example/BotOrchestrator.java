@@ -48,6 +48,10 @@ public class BotOrchestrator {
         }
         String apiKey = props.getProperty("api.key");
         String secretKey = props.getProperty("api.secret");
+        if (apiKey == null || secretKey == null) {
+            throw new IllegalStateException("API credentials missing in config.properties");
+        }
+        logger.info("Loaded API credentials from config.properties");
         SpotClient client = new SpotClientImpl(apiKey, secretKey);
         // Fetch all 24hr tickers
         String tickersJson = client.createMarket().ticker24H(new LinkedHashMap<>());
