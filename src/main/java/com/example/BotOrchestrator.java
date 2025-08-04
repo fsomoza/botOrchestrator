@@ -12,7 +12,7 @@ import java.util.logging.Logger;
  * Assumptions:
  * - TradingBot has been modified to accept symbol as args[0] (e.g., private static String SYMBOL = args.length > 0 ? args[0] : "SPKUSDC"; at the start of main).
  * - config.properties is in the classpath for API keys.
- * - The JAR is named "tradingbot.jar" and located in the working directory.
+ * - The JAR is named "traderBot-1.0-SNAPSHOT.jar" and located in the working directory.
  * - Working directory is ~/trader_bots (created if needed).
  * - Run this program with sudo to automatically install and start the services.
  * - If not run with sudo, it will generate files but print manual installation instructions.
@@ -23,7 +23,7 @@ public class BotOrchestrator {
     private static final int TOP_N = 20;
     private static final String QUOTE_ASSET = "USDC";
     private static final String TRADING_STATUS = "TRADING";
-    private static final String JAR_NAME = "tradingbot.jar";
+    private static final String JAR_NAME = "traderBot-1.0-SNAPSHOT.jar";
     public static void main(String[] args) throws Exception {
         // Determine real user and home (handles running with sudo)
         String sudoUser = System.getenv("SUDO_USER");
