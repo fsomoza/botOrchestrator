@@ -137,7 +137,7 @@ public class BotOrchestrator {
                 }
                 logger.info("Services installed, enabled, and started automatically.");
                 logger.info("Monitor with: systemctl status tradebot_<symbol>.service (run as sudo if needed)");
-                logger.info("Logs in: " + workingDir + "/output_<symbol>.log");
+                logger.info("Logs in: " + workingDir + "/output.log");
             } catch (Exception e) {
                 logger.severe("Failed to install/manage services: " + e.getMessage());
             }
@@ -151,7 +151,7 @@ public class BotOrchestrator {
                     "sudo systemctl enable tradebot_<symbol>.service\n" +
                     "sudo systemctl start tradebot_<symbol>.service\n" +
                     "Monitor with: sudo systemctl status tradebot_<symbol>.service\n" +
-                    "Logs in: " + workingDir + "/output_<symbol>.log");
+                    "Logs in: " + workingDir + "/output.log");
         }
     }
     private static void deleteServices(String workingDir, boolean isRoot) {
@@ -214,7 +214,7 @@ public class BotOrchestrator {
     private static void generateServiceFile(String symbol, String workingDir, String jarPath, String userName) throws IOException {
         String serviceName = "tradebot_" + symbol.toLowerCase() + ".service";
         String filePath = workingDir + "/" + serviceName;
-        String logPath = workingDir + "/output_" + symbol.toLowerCase() + ".log";
+        String logPath = workingDir + "/output.log";
         String content = "[Unit]\n" +
                 "Description=Trading Bot for " + symbol + "\n" +
                 "After=network.target\n" +
