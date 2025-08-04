@@ -16,3 +16,11 @@ Then package the project:
 ```bash
 mvn package
 ```
+
+## Cleanup
+
+To stop, disable, and remove all generated services and their systemd files, run the orchestrator with the `delete` flag:
+
+```bash
+java -jar target/bot-orchestrator-1.0-SNAPSHOT.jar delete
+```
